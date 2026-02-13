@@ -17,8 +17,8 @@ OUT_LABEL_PATH = os.environ.get("OUT_LABEL_PATH", "./data/labels/label_filtered.
 OUT_COUNTS_PATH = os.environ.get("OUT_COUNTS_PATH", "./data/labels/label_counts.xlsx")
 
 # Time window (minutes)
-WINDOW_BEFORE_MIN = 20
-WINDOW_AFTER_MIN = 20
+WINDOW_BEFORE_MIN = 10
+WINDOW_AFTER_MIN = 10
 
 # Alignment mode:
 #   "strict"  -> only use events occurring on the same calendar day as EDA
