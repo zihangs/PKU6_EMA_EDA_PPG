@@ -5,7 +5,8 @@ script2_filter_event_long.py (Fixed & Robust)
 修复说明：
 - 修复了 KeyError: 'event_idx' 问题。
 - 增加了对 meta_csv 列名的自动兼容（支持 event_idx 或 event_start_idx）。
-- 保持所有滤波和清洗逻辑不变。
+- 无效值：标记为 NaN 并插值，不再直接删除，保持时间对齐（HRV/IBI 依赖均匀采样）。
+- 无效值阈值与 script1 统一（INVALID_THRESHOLD = -8）。
 """
 
 import os
@@ -33,7 +34,8 @@ FILTER_ORDER = 4
 MOTION_THRESHOLD_FACTOR = 3.5
 OUTLIER_WINDOW = 50
 OUTLIER_THRESHOLD = 3.0
-INVALID_LEQ = -8.0
+# 无效值阈值：<= 此值视为无效（与 script1 一致，覆盖 -999 等可穿戴常用标记）
+INVALID_THRESHOLD = -8.0
 NAN_THRESHOLD = 0.6
 
 np.set_printoptions(precision=4, suppress=True)
@@ -68,8 +70,8 @@ def detect_outliers(x, window_size=50, threshold=3.0):
     s = pd.Series(x)
     rolling_mean = s.rolling(window=window_size, center=True, min_periods=1).mean()
     rolling_std = s.rolling(window=window_size, center=True, min_periods=1).std()
-    rolling_mean = rolling_mean.fillna(method='bfill').fillna(method='ffill')
-    rolling_std = rolling_std.fillna(method='bfill').fillna(method='ffill')
+    rolling_mean = rolling_mean.bfill().ffill()
+    rolling_std = rolling_std.bfill().ffill()
     rolling_std[rolling_std < 1e-6] = 1e-6
     z_local = np.abs((s - rolling_mean) / rolling_std)
     return z_local.values > threshold
@@ -85,15 +87,17 @@ def _fill_linear(x: np.ndarray, valid_mask: np.ndarray) -> np.ndarray:
     return np.interp(idx, iv, xv).astype(np.float32)
 
 def preprocess_and_filter_one_ppg(x: np.ndarray) -> tuple[np.ndarray, dict]:
-    """处理单个事件序列"""
-    x = np.asarray(x, dtype=np.float32)
-    # 1. 移除无效值
-    x = x[x > INVALID_LEQ]
-    if len(x) < FS:
-        return x, {"nan_frac": 1.0, "valid_len": 0, "bad_frac": 1.0}
+    """处理单个事件序列（标记无效为 NaN，保持时间对齐，不丢弃点）"""
+    x = np.asarray(x, dtype=np.float32).copy()
+    # 1. 标记无效值（不删除，保持序列长度与时间对齐）
+    x[x <= INVALID_THRESHOLD] = np.nan
+    x[~np.isfinite(x)] = np.nan
+    mask_nan = ~np.isfinite(x)
+
+    if np.sum(~mask_nan) < FS:
+        return np.full(len(x), np.nan, dtype=np.float32), {"nan_frac": 1.0, "valid_len": 0, "bad_frac": 1.0}
 
     # 2. 初始填补
-    mask_nan = ~np.isfinite(x)
     x_fill0 = _fill_linear(x, ~mask_nan)
 
     # 3. 检测

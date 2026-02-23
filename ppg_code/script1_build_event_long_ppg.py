@@ -28,6 +28,8 @@ OUT_DIR = os.environ.get("OUT_DIR", r"/Users/zhushiyao/Desktop/ppg_code/event_lo
 FS = 25.0                       # 采样率 (Hz)
 TIME_COL = None                 # 如果为 None，默认第一列为时间
 PPG_COL_GUESS = ["ppg", "PPG", "PPG_Raw", "bvp_raw"]  # 猜测 PPG 列名
+# 无效值阈值：<= 此值的 PPG 采样点视为无效（与 script2 一致，覆盖 -999 等可穿戴常用标记）
+INVALID_THRESHOLD = -8.0
 
 # =============================================================
 
@@ -68,7 +70,11 @@ def parse_ppg_content(series):
                     data_list.append(float(val))
         except:
             continue
-    return np.array(data_list, dtype=np.float32)
+    arr = np.array(data_list, dtype=np.float32)
+    # 标记无效值为 NaN，保持序列长度与时间对齐（与 script2 定义一致）
+    arr[arr <= INVALID_THRESHOLD] = np.nan
+    arr[~np.isfinite(arr)] = np.nan
+    return arr
 
 def process_file(csv_path):
     """
